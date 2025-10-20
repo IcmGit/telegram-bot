@@ -263,5 +263,33 @@ class Database {
             return false;
         }
     }
+
+    public function getRequestByUser($user_id) {
+        try {
+            logMessage("🔍 Поиск заявки для пользователя {$user_id}");
+            
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM requests 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT 1
+            ");
+            $stmt->execute([$user_id]);
+            $result = $stmt->fetch();
+            
+            if ($result) {
+                logMessage("✅ Найдена заявка #{$result['id']} для пользователя {$user_id}");
+            } else {
+                logMessage("❌ Заявка для пользователя {$user_id} не найдена");
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            logMessage("❌ Ошибка в getRequestByUser: " . $e->getMessage());
+            return false;
+        }
+    }
+
 }
 ?>

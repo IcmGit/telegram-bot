@@ -101,9 +101,11 @@ class BotWebhook {
                 // Проверяем есть ли у пользователя активная заявка
                 $active_request = $this->db->getActiveRequestByUser($chat_id);
                 if ($active_request && !in_array($text, ['/start', '/newrequest'])) {
-                    logMessage("👤 Пользователь {$chat_id} отвечает по активной заявке");
+                    logMessage("👤 Пользователь {$chat_id} отвечает по активной заявке #{$active_request['id']}");
+                    
+                    // ВЫЗЫВАЕМ handleTenantReply напрямую
                     $this->tenantHandler->handleTenantReply($chat_id, $text);
-                    return;
+                    return; // Важно: завершаем обработку после вызова
                 }
             }
             

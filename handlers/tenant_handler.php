@@ -160,12 +160,13 @@ class TenantHandler {
 
     public function handleTenantReply($user_id, $text) {
         try {
-            logMessage("👤 Пользователь {$user_id} отвечает: {$text}");
+            logMessage("👤 ВХОД В handleTenantReply: пользователь {$user_id}, текст: {$text}");
             
-            // Используем временный метод без проверки статуса
+            // Используем новый метод для поиска заявки
             $active_request = $this->db->getRequestByUser($user_id);
             
             if (!$active_request) {
+                logMessage("❌ Нет активной заявки для пользователя {$user_id}");
                 $this->api->sendMessage($user_id, 
                     "❌ У вас нет активных заявок. Используйте /start для создания новой заявки."
                 );
@@ -173,10 +174,10 @@ class TenantHandler {
             }
             
             $request_id = $active_request['id'];
-            
-            logMessage("💬 Сохранение сообщения пользователя в переписку заявки #{$request_id}");
+            logMessage("💬 Обработка ответа для заявки #{$request_id}");
             
             // Сохраняем сообщение пользователя в переписку
+            logMessage("💾 Сохранение сообщения пользователя в переписку...");
             $save_result = $this->db->saveConversationMessage($request_id, $user_id, $text, 'tenant');
             
             if (!$save_result) {
@@ -187,42 +188,62 @@ class TenantHandler {
             }
             
             // Уведомляем администраторов о новом сообщении
+            logMessage("📢 Уведомление администраторов...");
             $this->notifyAdminsAboutReply($request_id, $active_request, $text, $user_id);
             
+            logMessage("✅ Отправка подтверждения пользователю...");
             $this->api->sendMessage($user_id, 
                 "✅ Ваше сообщение отправлено администраторам.\n" .
                 "Заявка #{$request_id} все еще активна."
             );
             
+            logMessage("🎯 handleTenantReply завершен успешно");
             return true;
             
         } catch (Exception $e) {
-            logMessage("❌ Ошибка в handleTenantReply: " . $e->getMessage());
+            logMessage("💥 КРИТИЧЕСКАЯ ОШИБКА в handleTenantReply: " . $e->getMessage());
             $this->api->sendMessage($user_id, "❌ Ошибка при отправке сообщения");
             return false;
         }
     }
     
     private function notifyAdminsAboutReply($request_id, $request, $message, $user_id) {
-        $admin_message = "💬 *Новое сообщение по заявке #{$request_id}*\n\n" .
-                        "👤 *От:* {$request['user_name']} ({$request['phone']})\n" .
-                        "📝 *Сообщение:* {$message}\n\n" .
-                        "✍️ *Ответьте на это сообщение, чтобы продолжить диалог*";
-        
-        foreach ($this->admins as $admin_id) {
-            $keyboard = [
-                'inline_keyboard' => [
-                    [
-                        ['text' => '💬 Ответить', 'callback_data' => "respond_{$request_id}"],
-                        ['text' => '🔒 Закрыть заявку', 'callback_data' => "close_{$request_id}"]
-                    ]
-                ]
-            ];
+        try {
+            logMessage("📢 Начало уведомления администраторов о ответе по заявке #{$request_id}");
             
-            $this->api->sendMessage($admin_id, $admin_message, json_encode($keyboard));
+            $admin_message = "💬 *Новое сообщение по заявке #{$request_id}*\n\n" .
+                            "👤 *От:* {$request['user_name']} ({$request['phone']})\n" .
+                            "📝 *Сообщение:* {$message}\n\n" .
+                            "✍️ *Ответьте на это сообщение, чтобы продолжить диалог*";
+            
+            logMessage("📝 Текст уведомления подготовлен");
+            
+            foreach ($this->admins as $admin_id) {
+                logMessage("📨 Отправка уведомления администратору {$admin_id}");
+                
+                $keyboard = [
+                    'inline_keyboard' => [
+                        [
+                            ['text' => '💬 Ответить', 'callback_data' => "respond_{$request_id}"],
+                            ['text' => '🔒 Закрыть заявку', 'callback_data' => "close_{$request_id}"]
+                        ]
+                    ]
+                ];
+                
+                $result = $this->api->sendMessage($admin_id, $admin_message, json_encode($keyboard));
+                
+                if ($result) {
+                    logMessage("✅ Уведомление отправлено администратору {$admin_id}");
+                } else {
+                    logMessage("❌ Ошибка отправки уведомления администратору {$admin_id}");
+                }
+            }
+            
+            logMessage("📢 Все администраторы уведомлены о ответе пользователя по заявке #{$request_id}");
+            
+        } catch (Exception $e) {
+            logMessage("💥 Ошибка в notifyAdminsAboutReply: " . $e->getMessage());
         }
-        
-        logMessage("📢 Администраторы уведомлены о ответе пользователя по заявке #{$request_id}");
     }
 
 }
