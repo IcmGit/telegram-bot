@@ -159,32 +159,48 @@ class TenantHandler {
     }
 
     public function handleTenantReply($user_id, $text) {
-        logMessage("👤 Пользователь {$user_id} отвечает: {$text}");
-        
-        // Ищем активную заявку пользователя
-        $active_request = $this->db->getActiveRequestByUser($user_id);
-        
-        if (!$active_request) {
+        try {
+            logMessage("👤 Пользователь {$user_id} отвечает: {$text}");
+            
+            // Используем временный метод без проверки статуса
+            $active_request = $this->db->getRequestByUser($user_id);
+            
+            if (!$active_request) {
+                $this->api->sendMessage($user_id, 
+                    "❌ У вас нет активных заявок. Используйте /start для создания новой заявки."
+                );
+                return false;
+            }
+            
+            $request_id = $active_request['id'];
+            
+            logMessage("💬 Сохранение сообщения пользователя в переписку заявки #{$request_id}");
+            
+            // Сохраняем сообщение пользователя в переписку
+            $save_result = $this->db->saveConversationMessage($request_id, $user_id, $text, 'tenant');
+            
+            if (!$save_result) {
+                logMessage("❌ Не удалось сохранить сообщение пользователя в переписку");
+                // Продолжаем без сохранения в переписку
+            } else {
+                logMessage("✅ Сообщение пользователя сохранено в переписку");
+            }
+            
+            // Уведомляем администраторов о новом сообщении
+            $this->notifyAdminsAboutReply($request_id, $active_request, $text, $user_id);
+            
             $this->api->sendMessage($user_id, 
-                "❌ У вас нет активных заявок. Используйте /start для создания новой заявки."
+                "✅ Ваше сообщение отправлено администраторам.\n" .
+                "Заявка #{$request_id} все еще активна."
             );
+            
+            return true;
+            
+        } catch (Exception $e) {
+            logMessage("❌ Ошибка в handleTenantReply: " . $e->getMessage());
+            $this->api->sendMessage($user_id, "❌ Ошибка при отправке сообщения");
             return false;
         }
-        
-        $request_id = $active_request['id'];
-        
-        // Сохраняем сообщение пользователя в переписку
-        $this->db->saveConversationMessage($request_id, $user_id, $text, 'tenant');
-        
-        // Уведомляем администраторов о новом сообщении
-        $this->notifyAdminsAboutReply($request_id, $active_request, $text, $user_id);
-        
-        $this->api->sendMessage($user_id, 
-            "✅ Ваше сообщение отправлено администраторам.\n" .
-            "Заявка #{$request_id} все еще активна."
-        );
-        
-        return true;
     }
     
     private function notifyAdminsAboutReply($request_id, $request, $message, $user_id) {

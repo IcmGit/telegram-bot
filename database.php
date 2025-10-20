@@ -153,17 +153,48 @@ class Database {
     }
     // Методы для работы с перепиской
     public function saveConversationMessage($request_id, $user_id, $message_text, $message_type) {
-    $stmt = $this->pdo->prepare("
-        INSERT INTO conversations (request_id, user_id, message_text, message_type) 
-        VALUES (?, ?, ?, ?)
-    ");
-    $result = $stmt->execute([$request_id, $user_id, $message_text, $message_type]);
-    
-    if ($result) {
-        logMessage("💬 Сообщение сохранено в переписку заявки #{$request_id}, тип: {$message_type}");
-    }
-    
-    return $result;
+        try {
+            logMessage("💬 СОХРАНЕНИЕ СООБЩЕНИЯ: request_id={$request_id}, user_id={$user_id}, type={$message_type}");
+            
+            // Проверяем существование таблицы
+            $table_exists = $this->pdo->query("SHOW TABLES LIKE 'conversations'")->fetch();
+            if (!$table_exists) {
+                logMessage("❌ Таблица conversations не существует");
+                return false;
+            }
+            
+            // Проверяем структуру таблицы
+            $stmt_check = $this->pdo->query("DESCRIBE conversations");
+            $columns = $stmt_check->fetchAll(PDO::FETCH_COLUMN, 0);
+            logMessage("Столбцы таблицы conversations: " . implode(', ', $columns));
+            
+            $required_columns = ['request_id', 'user_id', 'message_text', 'message_type'];
+            foreach ($required_columns as $col) {
+                if (!in_array($col, $columns)) {
+                    logMessage("❌ Отсутствует столбец: {$col}");
+                    return false;
+                }
+            }
+            
+            $stmt = $this->pdo->prepare("
+                INSERT INTO conversations (request_id, user_id, message_text, message_type) 
+                VALUES (?, ?, ?, ?)
+            ");
+            $result = $stmt->execute([$request_id, $user_id, $message_text, $message_type]);
+            
+            if ($result) {
+                $message_id = $this->pdo->lastInsertId();
+                logMessage("✅ Сообщение #{$message_id} сохранено в переписку заявки #{$request_id}, тип: {$message_type}");
+            } else {
+                logMessage("❌ Ошибка сохранения сообщения в переписку");
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            logMessage("❌ Ошибка в saveConversationMessage: " . $e->getMessage());
+            return false;
+        }
     }
 
     public function getConversation($request_id) {
