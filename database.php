@@ -183,14 +183,35 @@ class Database {
     }
 
     public function getActiveRequestByUser($user_id) {
-        $stmt = $this->pdo->prepare("
-            SELECT * FROM requests 
-            WHERE user_id = ? AND status IN ('new', 'in_progress') 
-            ORDER BY created_at DESC 
-            LIMIT 1
-        ");
-        $stmt->execute([$user_id]);
-        return $stmt->fetch();
+        try {
+            logMessage("🔍 Поиск активной заявки для пользователя {$user_id}");
+            
+            // Сначала проверим структуру таблицы requests
+            $stmt_check = $this->pdo->query("DESCRIBE requests");
+            $columns = $stmt_check->fetchAll(PDO::FETCH_COLUMN);
+            logMessage("Столбцы таблицы requests: " . implode(', ', $columns));
+            
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM requests 
+                WHERE user_id = ? AND status IN ('new', 'completed') 
+                ORDER BY created_at DESC 
+                LIMIT 1
+            ");
+            $stmt->execute([$user_id]);
+            $result = $stmt->fetch();
+            
+            if ($result) {
+                logMessage("✅ Найдена активная заявка #{$result['id']} для пользователя {$user_id}");
+            } else {
+                logMessage("❌ Активная заявка для пользователя {$user_id} не найдена");
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            logMessage("❌ Ошибка в getActiveRequestByUser: " . $e->getMessage());
+            return false;
+        }
     }
 }
 ?>
