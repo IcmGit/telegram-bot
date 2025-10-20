@@ -81,19 +81,35 @@ class Database {
     }
     
     public function updateRequestResponse($request_id, $response, $admin_id) {
+    // Проверяем существование столбца admin_id
+    $columns = $this->pdo->query("SHOW COLUMNS FROM requests LIKE 'admin_id'")->fetch();
+    
+    if ($columns) {
+        // Столбец admin_id существует
         $stmt = $this->pdo->prepare("
             UPDATE requests 
             SET admin_response = ?, admin_id = ?, responded_at = CURRENT_TIMESTAMP, status = 'completed' 
             WHERE id = ?
         ");
         $result = $stmt->execute([$response, $admin_id, $request_id]);
-        
-        if ($result) {
-            logMessage("Заявка #{$request_id} отмечена как выполненная администратором {$admin_id}");
-        }
-        
-        return $result;
+    } else {
+        // Столбец admin_id не существует - используем без него
+        $stmt = $this->pdo->prepare("
+            UPDATE requests 
+            SET admin_response = ?, responded_at = CURRENT_TIMESTAMP, status = 'completed' 
+            WHERE id = ?
+        ");
+        $result = $stmt->execute([$response, $request_id]);
     }
+    
+    if ($result) {
+        logMessage("Заявка #{$request_id} отмечена как выполненная администратором {$admin_id}");
+    } else {
+        logMessage("❌ Ошибка обновления заявки #{$request_id}");
+    }
+    
+    return $result;
+}
     
     // Методы для работы с состояниями пользователей (для Long Polling)
     public function saveUserState($user_id, $state, $state_data = null) {
