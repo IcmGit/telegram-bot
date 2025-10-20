@@ -51,7 +51,16 @@ class Database {
                 state VARCHAR(50),
                 state_data TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            )"
+            )",
+            // ДОБАВЬТЕ ЭТУ ТАБЛИЦУ:
+            "CREATE TABLE IF NOT EXISTS conversations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                request_id INT NOT NULL,
+                user_id BIGINT NOT NULL,
+                message_text TEXT NOT NULL,
+                message_type ENUM('admin', 'tenant') NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         ];
         
         foreach ($queries as $query) {
