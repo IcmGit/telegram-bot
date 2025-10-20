@@ -186,11 +186,21 @@ class Database {
         try {
             logMessage("🔍 Поиск активной заявки для пользователя {$user_id}");
             
-            // Сначала проверим структуру таблицы requests
+            // Детальная проверка структуры таблицы
             $stmt_check = $this->pdo->query("DESCRIBE requests");
-            $columns = $stmt_check->fetchAll(PDO::FETCH_COLUMN);
+            $columns = $stmt_check->fetchAll(PDO::FETCH_COLUMN, 0);
             logMessage("Столбцы таблицы requests: " . implode(', ', $columns));
             
+            // Проверяем конкретно столбец user_id
+            $has_user_id = in_array('user_id', $columns);
+            logMessage("Столбец user_id существует: " . ($has_user_id ? 'ДА' : 'НЕТ'));
+            
+            if (!$has_user_id) {
+                logMessage("❌ Столбец user_id не найден в таблице requests");
+                return false;
+            }
+            
+            // Выполняем запрос
             $stmt = $this->pdo->prepare("
                 SELECT * FROM requests 
                 WHERE user_id = ? AND status IN ('new', 'completed') 
