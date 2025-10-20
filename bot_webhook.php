@@ -69,14 +69,11 @@ class BotWebhook {
             $text = $message['text'] ?? '';
             $first_name = $message['chat']['first_name'] ?? '';
             $photo = isset($message['photo']) ? end($message['photo'])['file_id'] : null;
-
-             logMessage("Обработка сообщения от {$chat_id}: {$text}");
+            
+            logMessage("Обработка сообщения от {$chat_id}: {$text}");
             
             $is_admin = in_array($chat_id, $this->admins);
-
-            // ДИАГНОСТИКА: Проверяем состояние пользователя
             $user_state = $this->db->getUserState($chat_id);
-            logMessage("Состояние пользователя {$chat_id}: " . ($user_state ? $user_state['state'] : 'нет состояния'));
             
             // ВАЖНОЕ ИСПРАВЛЕНИЕ: Сначала проверяем фото
             if ($photo && $user_state && $user_state['state'] === 'waiting_photo') {
@@ -85,18 +82,32 @@ class BotWebhook {
                 return;
             }
 
+            // Обработка ответов администратора
             if ($is_admin && $user_state && $user_state['state'] === 'waiting_response') {
                 logMessage("Обработка ответа администратора от {$chat_id}");
                 $this->adminHandler->handleAdminResponse($chat_id, $text);
                 return;
             }
             
+            // Обработка состояний пользователя (создание заявки)
             if ($user_state) {
                 logMessage("Обработка состояния пользователя {$chat_id}: {$user_state['state']}");
                 $this->processUserState($chat_id, $text, $photo, $user_state);
                 return;
             }
             
+            // Обработка ответов пользователя на сообщения администратора
+            if (!$is_admin) {
+                // Проверяем есть ли у пользователя активная заявка
+                $active_request = $this->db->getActiveRequestByUser($chat_id);
+                if ($active_request && !in_array($text, ['/start', '/newrequest'])) {
+                    logMessage("👤 Пользователь {$chat_id} отвечает по активной заявке");
+                    $this->tenantHandler->handleTenantReply($chat_id, $text);
+                    return;
+                }
+            }
+            
+            // Обработка команд
             if ($text === '/start' || $text === '/newrequest') {
                 logMessage("Запуск handleStart для {$chat_id}");
                 $this->tenantHandler->handleStart($chat_id, $first_name);
@@ -104,7 +115,6 @@ class BotWebhook {
                 logMessage("Запуск showAdminPanel для администратора {$chat_id}");
                 $this->adminHandler->showAdminPanel($chat_id);
             } else {
-                
                 logMessage("Отправка стандартного ответа {$chat_id}");
                 $this->api->sendMessage($chat_id, "Используйте /start для создания новой заявки.");
             }
@@ -143,12 +153,26 @@ class BotWebhook {
             $callback_data = $callback_query['data'];
             $admin_id = $callback_query['from']['id'];
             $callback_query_id = $callback_query['id'];
-
-            logMessage("Обработан callback: {$callback_data} от пользователя {$admin_id}");
+            
+            logMessage("🔘 Обработка callback: {$callback_data} от администратора {$admin_id}");
             
             if (strpos($callback_data, 'respond_') === 0) {
+                logMessage("📝 Администратор {$admin_id} нажал 'Ответить' по заявке {$callback_data}");
+                
+                $request_id = str_replace('respond_', '', $callback_data);
+                $this->db->saveUserState($admin_id, 'waiting_response', ['request_id' => $request_id]);
+                
                 $this->adminHandler->handleRespondRequest($callback_data, $admin_id);
                 $this->api->answerCallbackQuery($callback_query_id, "Подготовка ответа...");
+                
+            } elseif (strpos($callback_data, 'close_') === 0) {
+                logMessage("🔒 Администратор {$admin_id} нажал 'Закрыть заявку' {$callback_data}");
+                
+                $this->adminHandler->handleCloseRequest($callback_data, $admin_id);
+                $this->api->answerCallbackQuery($callback_query_id, "Закрытие заявки...");
+                
+                // Очищаем состояние администратора при закрытии заявки
+                $this->db->deleteUserState($admin_id);
             }
             
         } catch (Exception $e) {
@@ -158,23 +182,24 @@ class BotWebhook {
 }
 
 // Обработка входящего вебхука
-try {
-    $input = file_get_contents('php://input');
-    $update = json_decode($input, true);
+$input = file_get_contents('php://input');
+$update = json_decode($input, true);
 
-    if ($update) {
+logMessage("Получен input: " . substr($input, 0, 500)); // Логируем первые 500 символов
+
+if ($update) {
+    try {
         $bot = new BotWebhook($ADMINS);
         $bot->processUpdate($update);
+    } catch (Exception $e) {
+        logMessage("💥 Критическая ошибка при создании бота: " . $e->getMessage());
     }
-
-    // ВАЖНО: Всегда возвращаем 200 OK
-    http_response_code(200);
-    echo 'OK';
-    
-} catch (Exception $e) {
-    // Даже при критической ошибке возвращаем 200
-    logMessage("💥 Критическая ошибка вебхука: " . $e->getMessage());
-    http_response_code(200);
-    echo 'OK';
+} else {
+    logMessage("❌ Не удалось декодировать update из input");
 }
+
+// ВАЖНО: Всегда возвращаем 200 OK
+http_response_code(200);
+echo 'OK';
+
 ?>

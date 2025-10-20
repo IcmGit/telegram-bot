@@ -157,5 +157,57 @@ class TenantHandler {
         logMessage("Ответ на заявку #{$request_id} отправлен арендатору {$request['user_id']}");
         return true;
     }
+
+    public function handleTenantReply($user_id, $text) {
+        logMessage("👤 Пользователь {$user_id} отвечает: {$text}");
+        
+        // Ищем активную заявку пользователя
+        $active_request = $this->db->getActiveRequestByUser($user_id);
+        
+        if (!$active_request) {
+            $this->api->sendMessage($user_id, 
+                "❌ У вас нет активных заявок. Используйте /start для создания новой заявки."
+            );
+            return false;
+        }
+        
+        $request_id = $active_request['id'];
+        
+        // Сохраняем сообщение пользователя в переписку
+        $this->db->saveConversationMessage($request_id, $user_id, $text, 'tenant');
+        
+        // Уведомляем администраторов о новом сообщении
+        $this->notifyAdminsAboutReply($request_id, $active_request, $text, $user_id);
+        
+        $this->api->sendMessage($user_id, 
+            "✅ Ваше сообщение отправлено администраторам.\n" .
+            "Заявка #{$request_id} все еще активна."
+        );
+        
+        return true;
+    }
+    
+    private function notifyAdminsAboutReply($request_id, $request, $message, $user_id) {
+        $admin_message = "💬 *Новое сообщение по заявке #{$request_id}*\n\n" .
+                        "👤 *От:* {$request['user_name']} ({$request['phone']})\n" .
+                        "📝 *Сообщение:* {$message}\n\n" .
+                        "✍️ *Ответьте на это сообщение, чтобы продолжить диалог*";
+        
+        foreach ($this->admins as $admin_id) {
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '💬 Ответить', 'callback_data' => "respond_{$request_id}"],
+                        ['text' => '🔒 Закрыть заявку', 'callback_data' => "close_{$request_id}"]
+                    ]
+                ]
+            ];
+            
+            $this->api->sendMessage($admin_id, $admin_message, json_encode($keyboard));
+        }
+        
+        logMessage("📢 Администраторы уведомлены о ответе пользователя по заявке #{$request_id}");
+    }
+
 }
 ?>

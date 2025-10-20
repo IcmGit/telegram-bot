@@ -10,6 +10,10 @@ class Database {
         return self::$instance;
     }
     
+    public function getPdo() {
+    return $this->pdo;
+    }
+
     private function __construct() {
         try {
             $this->pdo = new PDO(
@@ -137,6 +141,56 @@ class Database {
     public function deleteUserState($user_id) {
         $stmt = $this->pdo->prepare("DELETE FROM user_states WHERE user_id = ?");
         return $stmt->execute([$user_id]);
+    }
+    // Методы для работы с перепиской
+    public function saveConversationMessage($request_id, $user_id, $message_text, $message_type) {
+    $stmt = $this->pdo->prepare("
+        INSERT INTO conversations (request_id, user_id, message_text, message_type) 
+        VALUES (?, ?, ?, ?)
+    ");
+    $result = $stmt->execute([$request_id, $user_id, $message_text, $message_type]);
+    
+    if ($result) {
+        logMessage("💬 Сообщение сохранено в переписку заявки #{$request_id}, тип: {$message_type}");
+    }
+    
+    return $result;
+    }
+
+    public function getConversation($request_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM conversations 
+            WHERE request_id = ? 
+            ORDER BY created_at ASC
+        ");
+        $stmt->execute([$request_id]);
+        return $stmt->fetchAll();
+    }
+
+    public function closeRequest($request_id) {
+        $stmt = $this->pdo->prepare("
+            UPDATE requests 
+            SET status = 'closed', responded_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ");
+        $result = $stmt->execute([$request_id]);
+        
+        if ($result) {
+            logMessage("🔒 Заявка #{$request_id} закрыта");
+        }
+        
+        return $result;
+    }
+
+    public function getActiveRequestByUser($user_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM requests 
+            WHERE user_id = ? AND status IN ('new', 'in_progress') 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ");
+        $stmt->execute([$user_id]);
+        return $stmt->fetch();
     }
 }
 ?>
