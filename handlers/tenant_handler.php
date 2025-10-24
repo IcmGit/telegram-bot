@@ -13,9 +13,9 @@ class TenantHandler {
     public function handleStart($chat_id, $first_name = '') {
         $this->db->saveUserState($chat_id, 'waiting_name');
         
-        $message = "👋 Добро пожаловать" . ($first_name ? ", {$first_name}!" : "!") . "\n\n";
-        $message .= "Оставьте заявку для администрации бизнес-центра.\n\n";
-        $message .= "Пожалуйста, введите ваше имя:";
+        $message = "👋 Добро пожаловать" . ($first_name ? ", {$first_name}!" : "!") . "\n";
+        $message .= "Оставьте заявку.\n";
+        $message .= "Введите ваше имя:";
         
         $this->api->sendMessage($chat_id, $message);
         logMessage("Пользователь {$chat_id} начал создание заявки");
@@ -23,7 +23,7 @@ class TenantHandler {
     
     public function handleName($chat_id, $name) {
         $this->db->saveUserState($chat_id, 'waiting_phone', ['name' => $name]);
-        $this->api->sendMessage($chat_id, "📞 Теперь введите ваш номер телефона:");
+        $this->api->sendMessage($chat_id, "📞 Введите ваш телефон:");
     }
     
     public function handlePhone($chat_id, $phone) {
@@ -32,7 +32,7 @@ class TenantHandler {
         $user_data['phone'] = $phone;
         
         $this->db->saveUserState($chat_id, 'waiting_message', $user_data);
-        $this->api->sendMessage($chat_id, "💬 Опишите вашу проблему или вопрос:");
+        $this->api->sendMessage($chat_id, "💬 Опишите вашу заявку:");
     }
     
     public function handleMessage($chat_id, $message_text) {
@@ -49,8 +49,8 @@ class TenantHandler {
         ];
         
         $this->api->sendMessage($chat_id, 
-            "📷 Вы можете прикрепить фото 📎.\n" .
-            "Или нажмите кнопку\n \"🚀 Отправить без фото\"",
+            "📎 Можно прикрепить фото.\n" .
+            "  или нажмите кнопку\n \"🚀 Отправить без фото\"",
             json_encode($keyboard)
         );
     }
@@ -193,8 +193,7 @@ class TenantHandler {
             
             logMessage("✅ Отправка подтверждения пользователю...");
             $this->api->sendMessage($user_id, 
-                "✅ Ваше сообщение отправлено администраторам.\n" .
-                "Заявка #{$request_id} все еще активна."
+                "✅ Заявка #{$request_id}. Сообщение отправлено.\n"
             );
             
             logMessage("🎯 handleTenantReply завершен успешно");
